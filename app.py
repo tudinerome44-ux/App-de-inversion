@@ -6,9 +6,11 @@ from urllib.parse import quote
 from email.utils import parsedate_to_datetime
 from datetime import datetime, timezone
 
+
 # ============================================================
 # CONFIGURACIÓN
 # ============================================================
+
 st.set_page_config(
     page_title="Trading Tactical",
     page_icon="📈",
@@ -17,13 +19,14 @@ st.set_page_config(
 
 
 # ============================================================
-# EMPRESAS
+# DATOS BASE DE LAS EMPRESAS
 # ============================================================
+
 DATA = [
     {
         "name": "Advanced Micro Devices",
         "ticker": "AMD",
-        "sector": "Semiconductores / IA",
+        "sector": "Semiconductors / IA",
         "base_score": 78,
         "risk": "Medio",
         "strategy": "Vigilar impulso de semiconductores y posibles rebotes rápidos."
@@ -96,62 +99,12 @@ DATA = [
 
 
 # ============================================================
-# ESTILOS
+# OBTENER NOTICIAS ACTUALES
 # ============================================================
-st.markdown(
-    """
-    <style>
 
-    .main {
-        background-color: #0e1117;
-    }
-
-    .signal-buy {
-        color: #3fb950;
-        font-size: 22px;
-        font-weight: 800;
-    }
-
-    .signal-hold {
-        color: #d29922;
-        font-size: 22px;
-        font-weight: 800;
-    }
-
-    .signal-sell {
-        color: #f85149;
-        font-size: 22px;
-        font-weight: 800;
-    }
-
-    .score {
-        font-size: 32px;
-        font-weight: 800;
-    }
-
-    .news-source {
-        color: #8b949e;
-        font-size: 12px;
-    }
-
-    .small-text {
-        color: #8b949e;
-        font-size: 13px;
-    }
-
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
-# ============================================================
-# OBTENER NOTICIAS
-# ============================================================
 def get_news(ticker):
 
-    query = quote(
-        f'"{ticker}" stock OR "{ticker}" company'
-    )
+    query = quote(f'"{ticker}" stock OR "{ticker}" company')
 
     url = (
         "https://news.google.com/rss/search?"
@@ -185,29 +138,25 @@ def get_news(ticker):
 
             source_element = item.find("source")
 
-            if source_element is not None:
-                source = source_element.text or "Google News"
+            if source_element is not None and source_element.text:
+                source = source_element.text
             else:
                 source = "Google News"
 
             date = None
 
             if pub_date:
-
                 try:
                     date = parsedate_to_datetime(pub_date)
-
                 except Exception:
                     date = None
 
-            articles.append(
-                {
-                    "title": title,
-                    "link": link,
-                    "source": source,
-                    "date": date
-                }
-            )
+            articles.append({
+                "title": title,
+                "link": link,
+                "source": source,
+                "date": date
+            })
 
         return articles[:5]
 
@@ -224,8 +173,9 @@ def get_news(ticker):
 
 
 # ============================================================
-# ANÁLISIS SIMPLE DE SENTIMIENTO
+# PALABRAS PARA ANALIZAR SENTIMIENTO
 # ============================================================
+
 POSITIVE_WORDS = [
     "growth",
     "grows",
@@ -257,6 +207,7 @@ POSITIVE_WORDS = [
     "beats",
     "outperform"
 ]
+
 
 NEGATIVE_WORDS = [
     "fall",
@@ -293,6 +244,10 @@ NEGATIVE_WORDS = [
 ]
 
 
+# ============================================================
+# ANÁLISIS DE NOTICIAS
+# ============================================================
+
 def analyze_news(news):
 
     positive = 0
@@ -303,12 +258,10 @@ def analyze_news(news):
         title = article["title"].lower()
 
         for word in POSITIVE_WORDS:
-
             if word in title:
                 positive += 1
 
         for word in NEGATIVE_WORDS:
-
             if word in title:
                 negative += 1
 
@@ -321,8 +274,8 @@ def analyze_news(news):
     else:
 
         sentiment_score = (
-            50
-            + ((positive - negative) / total) * 50
+            50 +
+            ((positive - negative) / total) * 50
         )
 
     sentiment_score = max(
@@ -338,7 +291,7 @@ def analyze_news(news):
 
 
 # ============================================================
-# RECENCIA
+# RECENCIA DE LAS NOTICIAS
 # ============================================================
 
 def recency_score(news):
@@ -389,7 +342,9 @@ def recency_score(news):
     if not scores:
         return 50
 
-    return round(sum(scores) / len(scores))
+    return round(
+        sum(scores) / len(scores)
+    )
 
 
 # ============================================================
@@ -406,7 +361,6 @@ def calculate_score(company, news):
 
     base = company["base_score"]
 
-    # Riesgo
     risk_adjustment = {
         "Bajo": 5,
         "Medio": 0,
@@ -417,7 +371,6 @@ def calculate_score(company, news):
         company["risk"]
     ]
 
-    # Score final
     score = (
         base * 0.40
         + sentiment * 0.35
@@ -435,57 +388,9 @@ def calculate_score(company, news):
 
 
 # ============================================================
-# PROBABILIDADES
-# ============================================================
-
-def calculate_probabilities(score):
-
-    """
-    Estas probabilidades son una representación heurística
-    de la fuerza de la señal.
-
-    NO representan una probabilidad estadística calibrada
-    de que el precio suba o baje.
-    """
-
-    if score >= 80:
-
-        buy = 55 + (score - 80) * 1.2
-        sell = max(5, 15 - (score - 80) * 0.5)
-
-    elif score >= 60:
-
-        buy = 40 + (score - 60) * 0.75
-        sell = 20 - (score - 60) * 0.35
-
-    else:
-
-        buy = 25 + score * 0.25
-        sell = 55 - score * 0.35
-
-    buy = max(5, min(90, buy))
-    sell = max(5, min(80, sell))
-
-    hold = 100 - buy - sell
-
-    hold = max(5, hold)
-
-    total = buy + hold + sell
-
-    buy = round(buy / total * 100)
-    hold = round(hold / total * 100)
-    sell = 100 - buy - hold
-
-    return {
-        "COMPRAR": buy,
-        "MANTENER": hold,
-        "VENDER": sell
-    }
-
-
-# ============================================================
 # SEÑAL
 # ============================================================
+
 def get_signal(score):
 
     if score >= 80:
@@ -498,18 +403,169 @@ def get_signal(score):
 
 
 # ============================================================
-# SESIÓN
+# CONFIANZA DE LA SEÑAL
+# ============================================================
+
+def calculate_confidence(score):
+
+    """
+    IMPORTANTE:
+
+    Estos porcentajes NO son probabilidades estadísticas.
+
+    Representan la confianza heurística del sistema
+    respecto a la señal generada por el Score.
+
+    La señal recomendada siempre tendrá el porcentaje
+    más alto.
+    """
+
+    # --------------------------------------------------------
+    # COMPRAR
+    # --------------------------------------------------------
+
+    if score >= 80:
+
+        distance = score - 80
+
+        buy = 55 + (distance * 0.80)
+
+        hold = 30 - (distance * 0.35)
+
+        sell = 15 - (distance * 0.45)
+
+        buy = max(55, min(75, buy))
+        hold = max(15, min(30, hold))
+        sell = max(5, min(15, sell))
+
+    # --------------------------------------------------------
+    # MANTENER
+    # --------------------------------------------------------
+
+    elif score >= 60:
+
+        distance = score - 60
+
+        hold = 50 + (distance * 0.25)
+
+        buy = 30 + (distance * 0.15)
+
+        sell = 20 - (distance * 0.40)
+
+        hold = max(50, min(55, hold))
+        buy = max(30, min(33, buy))
+        sell = max(12, min(20, sell))
+
+    # --------------------------------------------------------
+    # VENDER
+    # --------------------------------------------------------
+
+    else:
+
+        distance = 59 - score
+
+        sell = 50 + (distance * 0.70)
+
+        hold = 30 - (distance * 0.35)
+
+        buy = 20 - (distance * 0.35)
+
+        sell = max(50, min(75, sell))
+        hold = max(15, min(30, hold))
+        buy = max(5, min(20, buy))
+
+    # --------------------------------------------------------
+    # NORMALIZAR PARA QUE SUME 100
+    # --------------------------------------------------------
+
+    total = buy + hold + sell
+
+    buy = round(
+        buy / total * 100
+    )
+
+    hold = round(
+        hold / total * 100
+    )
+
+    sell = 100 - buy - hold
+
+    # --------------------------------------------------------
+    # CORRECCIÓN DE SEGURIDAD
+    # --------------------------------------------------------
+
+    signal = get_signal(score)
+
+    confidence = {
+        "COMPRAR": buy,
+        "MANTENER": hold,
+        "VENDER": sell
+    }
+
+    # Nos aseguramos de que la señal principal
+    # sea siempre la de mayor confianza.
+
+    if signal == "COMPRAR":
+
+        confidence["COMPRAR"] = max(
+            confidence["COMPRAR"],
+            confidence["MANTENER"] + 1,
+            confidence["VENDER"] + 1
+        )
+
+    elif signal == "MANTENER":
+
+        confidence["MANTENER"] = max(
+            confidence["MANTENER"],
+            confidence["COMPRAR"] + 1,
+            confidence["VENDER"] + 1
+        )
+
+    else:
+
+        confidence["VENDER"] = max(
+            confidence["VENDER"],
+            confidence["COMPRAR"] + 1,
+            confidence["MANTENER"] + 1
+        )
+
+    # Reajustar para que vuelva a sumar 100
+
+    total = sum(confidence.values())
+
+    buy = round(
+        confidence["COMPRAR"] / total * 100
+    )
+
+    hold = round(
+        confidence["MANTENER"] / total * 100
+    )
+
+    sell = 100 - buy - hold
+
+    return {
+        "COMPRAR": buy,
+        "MANTENER": hold,
+        "VENDER": sell
+    }
+
+
+# ============================================================
+# SESSION STATE
 # ============================================================
 
 if "news_data" not in st.session_state:
+
     st.session_state.news_data = {}
 
+
 if "last_update" not in st.session_state:
+
     st.session_state.last_update = None
 
 
 # ============================================================
-# ACTUALIZAR TODO
+# ACTUALIZAR TODAS LAS NOTICIAS
 # ============================================================
 
 def update_all_news():
@@ -536,14 +592,14 @@ def update_all_news():
 
 
 # ============================================================
-# CABECERA
+# TÍTULO
 # ============================================================
 
 st.title("📈 Trading Tactical")
 
 st.caption(
     "Noticias actuales + Score táctico + "
-    "señal estimada para 9 empresas"
+    "señal + confianza heurística"
 )
 
 
@@ -562,6 +618,7 @@ with c1:
         placeholder="Ej.: NVIDIA o NVDA"
     )
 
+
 with c2:
 
     signal_filter = st.selectbox(
@@ -573,6 +630,7 @@ with c2:
             "VENDER"
         ]
     )
+
 
 with c3:
 
@@ -603,13 +661,15 @@ if search.strip():
     items = [
         company
         for company in items
-        if q in company["name"].lower()
-        or q in company["ticker"].lower()
+        if (
+            q in company["name"].lower()
+            or q in company["ticker"].lower()
+        )
     ]
 
 
 # ============================================================
-# MOSTRAR EMPRESAS
+# DETERMINAR EMPRESAS VISIBLES
 # ============================================================
 
 visible_items = []
@@ -642,9 +702,7 @@ for company in items:
         or signal == signal_filter
     ):
 
-        visible_items.append(
-            company
-        )
+        visible_items.append(company)
 
 
 st.write(
@@ -652,6 +710,10 @@ st.write(
     f"{len(visible_items)} / {len(DATA)}"
 )
 
+
+# ============================================================
+# FECHA DE ACTUALIZACIÓN
+# ============================================================
 
 if st.session_state.last_update:
 
@@ -664,19 +726,27 @@ if st.session_state.last_update:
 
 
 # ============================================================
-# TARJETAS
+# MOSTRAR EMPRESAS
 # ============================================================
 
 for company in visible_items:
 
     name = company["name"]
+
     ticker = company["ticker"]
+
     strategy = company["strategy"]
+
     risk = company["risk"]
 
     news = st.session_state.news_data.get(
         ticker
     )
+
+
+    # --------------------------------------------------------
+    # SIN NOTICIAS
+    # --------------------------------------------------------
 
     if news is None:
 
@@ -690,13 +760,16 @@ for company in visible_items:
 
         recent = 50
 
-        probabilities = {
-            "COMPRAR": 0,
-            "MANTENER": 100,
-            "VENDER": 0
-        }
-
         signal = get_signal(score)
+
+        confidence = calculate_confidence(
+            score
+        )
+
+
+    # --------------------------------------------------------
+    # CON NOTICIAS
+    # --------------------------------------------------------
 
     else:
 
@@ -705,15 +778,16 @@ for company in visible_items:
             news
         )
 
-        probabilities = calculate_probabilities(
+        signal = get_signal(score)
+
+        confidence = calculate_confidence(
             score
         )
 
-        signal = get_signal(score)
 
-    # --------------------------------------------------------
-    # EMPRESA
-    # --------------------------------------------------------
+    # ========================================================
+    # TARJETA
+    # ========================================================
 
     with st.container(border=True):
 
@@ -721,9 +795,10 @@ for company in visible_items:
             [1.1, 2.7, 1.5]
         )
 
-        # ----------------------------------------------------
-        # INFORMACIÓN
-        # ----------------------------------------------------
+
+        # ====================================================
+        # INFORMACIÓN DE EMPRESA
+        # ====================================================
 
         with left:
 
@@ -739,36 +814,29 @@ for company in visible_items:
                 f"**Riesgo:** {risk}"
             )
 
+
             if signal == "COMPRAR":
 
-                st.markdown(
-                    '<div class="signal-buy">'
-                    '🟢 COMPRAR'
-                    '</div>',
-                    unsafe_allow_html=True
+                st.success(
+                    "🟢 COMPRAR"
                 )
 
             elif signal == "VENDER":
 
-                st.markdown(
-                    '<div class="signal-sell">'
-                    '🔴 VENDER'
-                    '</div>',
-                    unsafe_allow_html=True
+                st.error(
+                    "🔴 VENDER"
                 )
 
             else:
 
-                st.markdown(
-                    '<div class="signal-hold">'
-                    '🟡 MANTENER'
-                    '</div>',
-                    unsafe_allow_html=True
+                st.warning(
+                    "🟡 MANTENER"
                 )
 
-        # ----------------------------------------------------
+
+        # ====================================================
         # NOTICIAS
-        # ----------------------------------------------------
+        # ====================================================
 
         with center:
 
@@ -791,8 +859,11 @@ for company in visible_items:
                 ):
 
                     title = article["title"]
+
                     link = article["link"]
+
                     source = article["source"]
+
                     date = article["date"]
 
                     date_text = ""
@@ -803,10 +874,12 @@ for company in visible_items:
                             "%d/%m/%Y %H:%M"
                         )
 
+
                     if link:
 
                         st.markdown(
-                            f"**{i}. [{title}]({link})**"
+                            f"**{i}. "
+                            f"[{title}]({link})**"
                         )
 
                     else:
@@ -815,23 +888,28 @@ for company in visible_items:
                             f"**{i}. {title}**"
                         )
 
-                    st.markdown(
-                        f"""
-                        <span class="news-source">
-                        {source}
-                        {" · " + date_text if date_text else ""}
-                        </span>
-                        """,
-                        unsafe_allow_html=True
-                    )
+
+                    if date_text:
+
+                        st.caption(
+                            f"{source} · {date_text}"
+                        )
+
+                    else:
+
+                        st.caption(
+                            source
+                        )
+
 
                     if i < len(news[:5]):
 
                         st.divider()
 
-        # ----------------------------------------------------
+
+        # ====================================================
         # SCORE
-        # ----------------------------------------------------
+        # ====================================================
 
         with right:
 
@@ -840,10 +918,7 @@ for company in visible_items:
             )
 
             st.markdown(
-                f'<div class="score">'
-                f'{score}/100'
-                f'</div>',
-                unsafe_allow_html=True
+                f"# {score}/100"
             )
 
             st.progress(
@@ -874,51 +949,86 @@ for company in visible_items:
                 f"{recent}/100"
             )
 
-        # ----------------------------------------------------
-        # PROBABILIDADES
-        # ----------------------------------------------------
 
-        if news is not None:
+        # ====================================================
+        # CONFIANZA
+        # ====================================================
 
-            st.divider()
+        st.divider()
 
-            st.markdown(
-                "### 📊 Distribución estimada de la señal"
+        st.markdown(
+            "### 📊 Confianza de la señal"
+        )
+
+        st.caption(
+            "Interpretación heurística del sistema. "
+            "No representa probabilidades estadísticas "
+            "reales de subida o bajada."
+        )
+
+
+        p1, p2, p3 = st.columns(3)
+
+
+        with p1:
+
+            st.metric(
+                "🟢 COMPRAR",
+                f"{confidence['COMPRAR']}%"
             )
 
-            p1, p2, p3 = st.columns(3)
 
-            with p1:
+        with p2:
 
-                st.metric(
-                    "🟢 COMPRAR",
-                    f"{probabilities['COMPRAR']}%"
-                )
-
-            with p2:
-
-                st.metric(
-                    "🟡 MANTENER",
-                    f"{probabilities['MANTENER']}%"
-                )
-
-            with p3:
-
-                st.metric(
-                    "🔴 VENDER",
-                    f"{probabilities['VENDER']}%"
-                )
-
-            st.caption(
-                "Estas probabilidades representan la "
-                "confianza heurística del modelo en cada "
-                "señal. No son probabilidades estadísticas "
-                "calibradas de movimiento del precio."
+            st.metric(
+                "🟡 MANTENER",
+                f"{confidence['MANTENER']}%"
             )
 
-        # ----------------------------------------------------
+
+        with p3:
+
+            st.metric(
+                "🔴 VENDER",
+                f"{confidence['VENDER']}%"
+            )
+
+
+        # ====================================================
+        # EXPLICACIÓN DE LA SEÑAL
+        # ====================================================
+
+        if signal == "COMPRAR":
+
+            st.success(
+                f"El sistema recomienda COMPRAR "
+                f"porque el Score táctico es "
+                f"{score}/100 y se encuentra en el "
+                f"rango de 80–100."
+            )
+
+        elif signal == "MANTENER":
+
+            st.warning(
+                f"El sistema recomienda MANTENER "
+                f"porque el Score táctico es "
+                f"{score}/100 y se encuentra en el "
+                f"rango intermedio de 60–79."
+            )
+
+        else:
+
+            st.error(
+                f"El sistema recomienda VENDER "
+                f"porque el Score táctico es "
+                f"{score}/100 y se encuentra "
+                f"por debajo de 60."
+            )
+
+
+        # ====================================================
         # ESTRATEGIA
-        # ----------------------------------------------------
+        # ====================================================
 
         st.divider()
 
@@ -936,18 +1046,19 @@ for company in visible_items:
 st.divider()
 
 st.markdown(
-    "### 🧠 ¿Cómo se calcula el Score?"
+    "### 🧠 ¿Cómo se calcula el Score táctico?"
 )
 
 st.write(
     """
-    El Score táctico combina la valoración base de la empresa,
-    el sentimiento detectado en las noticias, la recencia de
-    las noticias y un ajuste por riesgo.
+    El Score táctico es un indicador heurístico de 0 a 100
+    que resume diferentes factores utilizados por el sistema.
     """
 )
 
+
 methodology = {
+
     "Componente": [
         "Valoración base",
         "Sentimiento de noticias",
@@ -955,6 +1066,7 @@ methodology = {
         "Componente neutral",
         "Ajuste por riesgo"
     ],
+
     "Peso aproximado": [
         "40%",
         "35%",
@@ -963,6 +1075,7 @@ methodology = {
         "Ajuste"
     ]
 }
+
 
 st.dataframe(
     methodology,
@@ -976,10 +1089,12 @@ st.dataframe(
 # ============================================================
 
 st.markdown(
-    "### 📖 Interpretación"
+    "### 📖 Interpretación del Score"
 )
 
+
 i1, i2, i3 = st.columns(3)
+
 
 with i1:
 
@@ -987,11 +1102,11 @@ with i1:
         """
         **80–100**
 
-        🟢 COMPRAR
+        🟢 **COMPRAR**
 
-        Señal táctica fuerte.
-        """
-    )
+        Escenario táctico favorable.
+        """)
+
 
 with i2:
 
@@ -999,11 +1114,11 @@ with i2:
         """
         **60–79**
 
-        🟡 MANTENER
+        🟡 **MANTENER**
 
-        Señal intermedia.
-        """
-    )
+        Escenario táctico intermedio.
+        """)
+
 
 with i3:
 
@@ -1011,11 +1126,31 @@ with i3:
         """
         **0–59**
 
-        🔴 VENDER
+        🔴 **VENDER**
 
-        Señal táctica débil.
+        Escenario táctico débil.
         """
     )
+
+
+# ============================================================
+# LIMITACIONES
+# ============================================================
+
+st.divider()
+
+st.markdown(
+    "### ⚠️ Importante"
+)
+
+st.write(
+    """
+    El Score y la confianza son indicadores heurísticos.
+    No constituyen una predicción estadística del precio,
+    recomendación financiera personalizada ni garantía
+    de rendimiento.
+    """
+)
 
 
 # ============================================================
@@ -1025,11 +1160,11 @@ with i3:
 st.divider()
 
 st.caption(
-    "Trading Tactical · V3 · Sin JavaScript · "
-    "Sin base de datos"
+    "Trading Tactical · V4 · Sin JavaScript · Sin base de datos"
 )
 
 st.caption(
     "Las noticias se consultan nuevamente al pulsar "
-    "«Actualizar noticias». El modelo no conserva historial."
+    "«Actualizar noticias». El sistema no conserva "
+    "historial de noticias."
 )
