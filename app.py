@@ -1,81 +1,99 @@
 import streamlit as st
-import pandas as pd
 import requests
 import xml.etree.ElementTree as ET
+
 from urllib.parse import quote
 from email.utils import parsedate_to_datetime
-from datetime import datetime
-
+from datetime import datetime, timezone
 
 # ============================================================
 # CONFIGURACIÓN
 # ============================================================
-
 st.set_page_config(
     page_title="Trading Tactical",
     page_icon="📈",
     layout="wide"
 )
 
+
 # ============================================================
 # EMPRESAS
 # ============================================================
 DATA = [
-    (
-        "Advanced Micro Devices",
-        "AMD",
-        "COMPRAR",
-        "Vigilar impulso de semiconductores y posibles rebotes rápidos."
-    ),
-    (
-        "NVIDIA",
-        "NVDA",
-        "COMPRAR",
-        "Prioridad táctica por exposición a IA; buscar entradas tras retrocesos."
-    ),
-    (
-        "Cisco",
-        "CSCO",
-        "MANTENER",
-        "Perfil más defensivo; mantener mientras no aparezca un catalizador claro."
-    ),
-    (
-        "Lam Research",
-        "LRCX",
-        "COMPRAR",
-        "Vigilar ciclo de semiconductores y gasto en fabricación."
-    ),
-    (
-        "Intel",
-        "INTC",
-        "MANTENER",
-        "Mayor incertidumbre relativa; esperar catalizador fuerte."
-    ),
-    (
-        "Broadcom",
-        "AVGO",
-        "COMPRAR",
-        "Interés táctico por IA, semiconductores y networking."
-    ),
-    (
-        "Applied Materials",
-        "AMAT",
-        "COMPRAR",
-        "Exposición al ciclo de equipamiento semiconductor."
-    ),
-    (
-        "ASML Holding",
-        "ASML",
-        "COMPRAR",
-        "Activo estratégico del ecosistema de semiconductores."
-    ),
-    (
-        "KLA",
-        "KLAC",
-        "COMPRAR",
-        "Exposición a control de procesos y fabricación de chips."
-    ),
+    {
+        "name": "Advanced Micro Devices",
+        "ticker": "AMD",
+        "sector": "Semiconductores / IA",
+        "base_score": 78,
+        "risk": "Medio",
+        "strategy": "Vigilar impulso de semiconductores y posibles rebotes rápidos."
+    },
+    {
+        "name": "NVIDIA",
+        "ticker": "NVDA",
+        "sector": "IA / GPUs",
+        "base_score": 84,
+        "risk": "Medio",
+        "strategy": "Prioridad táctica por exposición a IA; buscar entradas tras retrocesos."
+    },
+    {
+        "name": "Cisco",
+        "ticker": "CSCO",
+        "sector": "Networking",
+        "base_score": 65,
+        "risk": "Bajo",
+        "strategy": "Perfil más defensivo; mantener mientras no aparezca un catalizador claro."
+    },
+    {
+        "name": "Lam Research",
+        "ticker": "LRCX",
+        "sector": "Equipamiento semiconductor",
+        "base_score": 78,
+        "risk": "Medio",
+        "strategy": "Vigilar ciclo de semiconductores y gasto en fabricación."
+    },
+    {
+        "name": "Intel",
+        "ticker": "INTC",
+        "sector": "CPUs / Foundry",
+        "base_score": 52,
+        "risk": "Alto",
+        "strategy": "Mayor incertidumbre relativa; esperar un catalizador fuerte."
+    },
+    {
+        "name": "Broadcom",
+        "ticker": "AVGO",
+        "sector": "Semiconductores / IA",
+        "base_score": 82,
+        "risk": "Medio",
+        "strategy": "Interés táctico por IA, semiconductores y networking."
+    },
+    {
+        "name": "Applied Materials",
+        "ticker": "AMAT",
+        "sector": "Equipamiento semiconductor",
+        "base_score": 75,
+        "risk": "Medio",
+        "strategy": "Exposición al ciclo de equipamiento semiconductor."
+    },
+    {
+        "name": "ASML Holding",
+        "ticker": "ASML",
+        "sector": "Equipamiento semiconductor",
+        "base_score": 81,
+        "risk": "Medio",
+        "strategy": "Activo estratégico del ecosistema de semiconductores."
+    },
+    {
+        "name": "KLA",
+        "ticker": "KLAC",
+        "sector": "Control de procesos",
+        "base_score": 74,
+        "risk": "Medio",
+        "strategy": "Exposición a control de procesos y fabricación de chips."
+    }
 ]
+
 
 # ============================================================
 # ESTILOS
@@ -88,14 +106,27 @@ st.markdown(
         background-color: #0e1117;
     }
 
-    .news-card {
-        padding: 8px 0;
-        border-bottom: 1px solid #30363d;
+    .signal-buy {
+        color: #3fb950;
+        font-size: 22px;
+        font-weight: 800;
     }
 
-    .news-title {
-        font-size: 15px;
-        font-weight: 600;
+    .signal-hold {
+        color: #d29922;
+        font-size: 22px;
+        font-weight: 800;
+    }
+
+    .signal-sell {
+        color: #f85149;
+        font-size: 22px;
+        font-weight: 800;
+    }
+
+    .score {
+        font-size: 32px;
+        font-weight: 800;
     }
 
     .news-source {
@@ -103,19 +134,9 @@ st.markdown(
         font-size: 12px;
     }
 
-    .buy {
-        color: #3fb950;
-        font-weight: 800;
-    }
-
-    .hold {
-        color: #d29922;
-        font-weight: 800;
-    }
-
-    .sell {
-        color: #f85149;
-        font-weight: 800;
+    .small-text {
+        color: #8b949e;
+        font-size: 13px;
     }
 
     </style>
@@ -124,16 +145,12 @@ st.markdown(
 )
 
 # ============================================================
-# FUNCIONES
+# OBTENER NOTICIAS
 # ============================================================
 def get_news(ticker):
-    """
-    Busca noticias actuales utilizando Google News RSS.
-    No requiere API key.
-    """
 
     query = quote(
-        f"{ticker} stock OR {ticker} semiconductor"
+        f'"{ticker}" stock OR "{ticker}" company'
     )
 
     url = (
@@ -158,9 +175,9 @@ def get_news(ticker):
 
         root = ET.fromstring(response.content)
 
-        news = []
+        articles = []
 
-        for item in root.findall("./channel/item")[:5]:
+        for item in root.findall("./channel/item"):
 
             title = item.findtext("title", "")
             link = item.findtext("link", "")
@@ -173,42 +190,317 @@ def get_news(ticker):
             else:
                 source = "Google News"
 
-            formatted_date = ""
+            date = None
 
             if pub_date:
-                try:
-                    dt = parsedate_to_datetime(pub_date)
-                    formatted_date = dt.strftime(
-                        "%d/%m/%Y %H:%M"
-                    )
-                except Exception:
-                    formatted_date = pub_date
 
-            news.append(
+                try:
+                    date = parsedate_to_datetime(pub_date)
+
+                except Exception:
+                    date = None
+
+            articles.append(
                 {
                     "title": title,
                     "link": link,
                     "source": source,
-                    "date": formatted_date
+                    "date": date
                 }
             )
 
-        return news
+        return articles[:5]
 
-    except Exception as e:
+    except Exception as error:
 
         return [
             {
-                "title": "No se pudieron cargar las noticias.",
+                "title": "No se pudieron obtener las noticias.",
                 "link": "",
-                "source": f"Error: {str(e)}",
-                "date": ""
+                "source": str(error),
+                "date": None
             }
         ]
 
+
 # ============================================================
-# CARGA / ACTUALIZACIÓN
+# ANÁLISIS SIMPLE DE SENTIMIENTO
 # ============================================================
+POSITIVE_WORDS = [
+    "growth",
+    "grows",
+    "increase",
+    "increases",
+    "increased",
+    "profit",
+    "profits",
+    "revenue",
+    "revenues",
+    "record",
+    "strong",
+    "surge",
+    "surges",
+    "rises",
+    "rise",
+    "gain",
+    "gains",
+    "upgrade",
+    "bullish",
+    "demand",
+    "deal",
+    "contract",
+    "partnership",
+    "ai",
+    "artificial intelligence",
+    "expansion",
+    "beat",
+    "beats",
+    "outperform"
+]
+
+NEGATIVE_WORDS = [
+    "fall",
+    "falls",
+    "fell",
+    "drop",
+    "drops",
+    "decline",
+    "declines",
+    "loss",
+    "losses",
+    "weak",
+    "warning",
+    "downgrade",
+    "bearish",
+    "lawsuit",
+    "investigation",
+    "restriction",
+    "restrictions",
+    "ban",
+    "bans",
+    "delay",
+    "delays",
+    "cut",
+    "cuts",
+    "miss",
+    "misses",
+    "risk",
+    "risks",
+    "layoffs",
+    "layoff",
+    "problem",
+    "problems"
+]
+
+
+def analyze_news(news):
+
+    positive = 0
+    negative = 0
+
+    for article in news:
+
+        title = article["title"].lower()
+
+        for word in POSITIVE_WORDS:
+
+            if word in title:
+                positive += 1
+
+        for word in NEGATIVE_WORDS:
+
+            if word in title:
+                negative += 1
+
+    total = positive + negative
+
+    if total == 0:
+
+        sentiment_score = 50
+
+    else:
+
+        sentiment_score = (
+            50
+            + ((positive - negative) / total) * 50
+        )
+
+    sentiment_score = max(
+        0,
+        min(100, sentiment_score)
+    )
+
+    return {
+        "positive": positive,
+        "negative": negative,
+        "sentiment": round(sentiment_score)
+    }
+
+
+# ============================================================
+# RECENCIA
+# ============================================================
+
+def recency_score(news):
+
+    if not news:
+        return 50
+
+    now = datetime.now(timezone.utc)
+
+    scores = []
+
+    for article in news:
+
+        date = article.get("date")
+
+        if date is None:
+            continue
+
+        if date.tzinfo is None:
+            date = date.replace(
+                tzinfo=timezone.utc
+            )
+
+        hours = (
+            now - date
+        ).total_seconds() / 3600
+
+        if hours <= 6:
+            score = 100
+
+        elif hours <= 24:
+            score = 90
+
+        elif hours <= 48:
+            score = 80
+
+        elif hours <= 72:
+            score = 70
+
+        elif hours <= 120:
+            score = 60
+
+        else:
+            score = 50
+
+        scores.append(score)
+
+    if not scores:
+        return 50
+
+    return round(sum(scores) / len(scores))
+
+
+# ============================================================
+# SCORE TÁCTICO
+# ============================================================
+
+def calculate_score(company, news):
+
+    analysis = analyze_news(news)
+
+    sentiment = analysis["sentiment"]
+
+    recent = recency_score(news)
+
+    base = company["base_score"]
+
+    # Riesgo
+    risk_adjustment = {
+        "Bajo": 5,
+        "Medio": 0,
+        "Alto": -7
+    }
+
+    risk_score = risk_adjustment[
+        company["risk"]
+    ]
+
+    # Score final
+    score = (
+        base * 0.40
+        + sentiment * 0.35
+        + recent * 0.15
+        + 50 * 0.10
+        + risk_score
+    )
+
+    score = max(
+        0,
+        min(100, round(score))
+    )
+
+    return score, analysis, recent
+
+
+# ============================================================
+# PROBABILIDADES
+# ============================================================
+
+def calculate_probabilities(score):
+
+    """
+    Estas probabilidades son una representación heurística
+    de la fuerza de la señal.
+
+    NO representan una probabilidad estadística calibrada
+    de que el precio suba o baje.
+    """
+
+    if score >= 80:
+
+        buy = 55 + (score - 80) * 1.2
+        sell = max(5, 15 - (score - 80) * 0.5)
+
+    elif score >= 60:
+
+        buy = 40 + (score - 60) * 0.75
+        sell = 20 - (score - 60) * 0.35
+
+    else:
+
+        buy = 25 + score * 0.25
+        sell = 55 - score * 0.35
+
+    buy = max(5, min(90, buy))
+    sell = max(5, min(80, sell))
+
+    hold = 100 - buy - sell
+
+    hold = max(5, hold)
+
+    total = buy + hold + sell
+
+    buy = round(buy / total * 100)
+    hold = round(hold / total * 100)
+    sell = 100 - buy - hold
+
+    return {
+        "COMPRAR": buy,
+        "MANTENER": hold,
+        "VENDER": sell
+    }
+
+
+# ============================================================
+# SEÑAL
+# ============================================================
+def get_signal(score):
+
+    if score >= 80:
+        return "COMPRAR"
+
+    if score >= 60:
+        return "MANTENER"
+
+    return "VENDER"
+
+
+# ============================================================
+# SESIÓN
+# ============================================================
+
 if "news_data" not in st.session_state:
     st.session_state.news_data = {}
 
@@ -216,7 +508,11 @@ if "last_update" not in st.session_state:
     st.session_state.last_update = None
 
 
-def update_news():
+# ============================================================
+# ACTUALIZAR TODO
+# ============================================================
+
+def update_all_news():
 
     st.session_state.news_data = {}
 
@@ -224,36 +520,40 @@ def update_news():
 
     total = len(DATA)
 
-    for index, company in enumerate(DATA):
+    for i, company in enumerate(DATA):
 
-        name, ticker, action, strategy = company
+        ticker = company["ticker"]
 
-        st.session_state.news_data[ticker] = get_news(
+        st.session_state.news_data[
             ticker
-        )
+        ] = get_news(ticker)
 
         progress.progress(
-            (index + 1) / total
+            (i + 1) / total
         )
 
     st.session_state.last_update = datetime.now()
 
+
 # ============================================================
 # CABECERA
 # ============================================================
+
 st.title("📈 Trading Tactical")
 
 st.caption(
-    "Dashboard táctico de 9 empresas · Noticias actuales · "
-    "Sin base de datos · Sin JavaScript"
+    "Noticias actuales + Score táctico + "
+    "señal estimada para 9 empresas"
 )
 
 
 # ============================================================
-# CONTROLES
+# FILTROS
 # ============================================================
 
-c1, c2, c3 = st.columns([2, 1, 1])
+c1, c2, c3 = st.columns(
+    [2, 1, 1]
+)
 
 with c1:
 
@@ -262,10 +562,9 @@ with c1:
         placeholder="Ej.: NVIDIA o NVDA"
     )
 
-
 with c2:
 
-    filt = st.selectbox(
+    signal_filter = st.selectbox(
         "Señal",
         [
             "Todas",
@@ -274,7 +573,6 @@ with c2:
             "VENDER"
         ]
     )
-
 
 with c3:
 
@@ -285,15 +583,17 @@ with c3:
         use_container_width=True
     ):
 
-        update_news()
+        update_all_news()
 
         st.success(
-            "Noticias actualizadas."
+            "Noticias y análisis actualizados."
         )
 
+
 # ============================================================
-# FILTRADO
+# FILTRAR EMPRESAS
 # ============================================================
+
 items = DATA
 
 if search.strip():
@@ -301,25 +601,55 @@ if search.strip():
     q = search.lower().strip()
 
     items = [
-        x
-        for x in items
-        if q in x[0].lower()
-        or q in x[1].lower()
+        company
+        for company in items
+        if q in company["name"].lower()
+        or q in company["ticker"].lower()
     ]
 
 
-if filt != "Todas":
+# ============================================================
+# MOSTRAR EMPRESAS
+# ============================================================
 
-    items = [
-        x
-        for x in items
-        if x[2] == filt
-    ]
+visible_items = []
+
+for company in items:
+
+    ticker = company["ticker"]
+
+    news = st.session_state.news_data.get(
+        ticker
+    )
+
+    if news is None:
+
+        score = company["base_score"]
+
+        signal = get_signal(score)
+
+    else:
+
+        score, analysis, recent = calculate_score(
+            company,
+            news
+        )
+
+        signal = get_signal(score)
+
+    if (
+        signal_filter == "Todas"
+        or signal == signal_filter
+    ):
+
+        visible_items.append(
+            company
+        )
 
 
 st.write(
     f"**Empresas mostradas:** "
-    f"{len(items)} / {len(DATA)}"
+    f"{len(visible_items)} / {len(DATA)}"
 )
 
 
@@ -332,67 +662,124 @@ if st.session_state.last_update:
         )
     )
 
+
 # ============================================================
-# EMPRESAS
+# TARJETAS
 # ============================================================
-for name, ticker, action, strategy in items:
+
+for company in visible_items:
+
+    name = company["name"]
+    ticker = company["ticker"]
+    strategy = company["strategy"]
+    risk = company["risk"]
+
+    news = st.session_state.news_data.get(
+        ticker
+    )
+
+    if news is None:
+
+        score = company["base_score"]
+
+        analysis = {
+            "positive": 0,
+            "negative": 0,
+            "sentiment": 50
+        }
+
+        recent = 50
+
+        probabilities = {
+            "COMPRAR": 0,
+            "MANTENER": 100,
+            "VENDER": 0
+        }
+
+        signal = get_signal(score)
+
+    else:
+
+        score, analysis, recent = calculate_score(
+            company,
+            news
+        )
+
+        probabilities = calculate_probabilities(
+            score
+        )
+
+        signal = get_signal(score)
+
+    # --------------------------------------------------------
+    # EMPRESA
+    # --------------------------------------------------------
 
     with st.container(border=True):
 
-        a, b, c = st.columns(
+        left, center, right = st.columns(
             [1.1, 2.7, 1.5]
         )
 
         # ----------------------------------------------------
-        # INFORMACIÓN EMPRESA
+        # INFORMACIÓN
         # ----------------------------------------------------
 
-        with a:
+        with left:
 
             st.subheader(ticker)
 
             st.write(name)
 
-            if action == "COMPRAR":
+            st.caption(
+                company["sector"]
+            )
+
+            st.write(
+                f"**Riesgo:** {risk}"
+            )
+
+            if signal == "COMPRAR":
 
                 st.markdown(
-                    '<span class="buy">🟢 COMPRAR</span>',
+                    '<div class="signal-buy">'
+                    '🟢 COMPRAR'
+                    '</div>',
                     unsafe_allow_html=True
                 )
 
-            elif action == "VENDER":
+            elif signal == "VENDER":
 
                 st.markdown(
-                    '<span class="sell">🔴 VENDER</span>',
+                    '<div class="signal-sell">'
+                    '🔴 VENDER'
+                    '</div>',
                     unsafe_allow_html=True
                 )
 
             else:
 
                 st.markdown(
-                    '<span class="hold">🟡 MANTENER</span>',
+                    '<div class="signal-hold">'
+                    '🟡 MANTENER'
+                    '</div>',
                     unsafe_allow_html=True
                 )
-
 
         # ----------------------------------------------------
         # NOTICIAS
         # ----------------------------------------------------
 
-        with b:
+        with center:
 
             st.markdown(
                 "### 📰 5 noticias actuales"
             )
 
-            news = st.session_state.news_data.get(
-                ticker
-            )
-
             if news is None:
 
                 st.info(
-                    "Pulsa «🔄 Actualizar noticias» "
+                    "Pulsa «Actualizar noticias» "
                     "para cargar las noticias actuales."
                 )
 
@@ -408,74 +795,241 @@ for name, ticker, action, strategy in items:
                     source = article["source"]
                     date = article["date"]
 
+                    date_text = ""
+
+                    if date:
+
+                        date_text = date.strftime(
+                            "%d/%m/%Y %H:%M"
+                        )
+
                     if link:
 
                         st.markdown(
-                            f"""
-                            **{i}. [{title}]({link})**
-
-                            <span class="news-source">
-                            {source}
-                            {" · " + date if date else ""}
-                            </span>
-                            """,
-                            unsafe_allow_html=True
+                            f"**{i}. [{title}]({link})**"
                         )
 
                     else:
 
                         st.write(
-                            f"{i}. {title}"
+                            f"**{i}. {title}**"
                         )
 
-                    st.divider()
+                    st.markdown(
+                        f"""
+                        <span class="news-source">
+                        {source}
+                        {" · " + date_text if date_text else ""}
+                        </span>
+                        """,
+                        unsafe_allow_html=True
+                    )
 
+                    if i < len(news[:5]):
+
+                        st.divider()
+
+        # ----------------------------------------------------
+        # SCORE
+        # ----------------------------------------------------
+
+        with right:
+
+            st.markdown(
+                "### 🎯 Score táctico"
+            )
+
+            st.markdown(
+                f'<div class="score">'
+                f'{score}/100'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+
+            st.progress(
+                score / 100
+            )
+
+            st.write(
+                f"**Señal:** {signal}"
+            )
+
+            st.write(
+                f"**Noticias positivas:** "
+                f"{analysis['positive']}"
+            )
+
+            st.write(
+                f"**Noticias negativas:** "
+                f"{analysis['negative']}"
+            )
+
+            st.write(
+                f"**Sentimiento:** "
+                f"{analysis['sentiment']}/100"
+            )
+
+            st.write(
+                f"**Recencia:** "
+                f"{recent}/100"
+            )
+
+        # ----------------------------------------------------
+        # PROBABILIDADES
+        # ----------------------------------------------------
+
+        if news is not None:
+
+            st.divider()
+
+            st.markdown(
+                "### 📊 Distribución estimada de la señal"
+            )
+
+            p1, p2, p3 = st.columns(3)
+
+            with p1:
+
+                st.metric(
+                    "🟢 COMPRAR",
+                    f"{probabilities['COMPRAR']}%"
+                )
+
+            with p2:
+
+                st.metric(
+                    "🟡 MANTENER",
+                    f"{probabilities['MANTENER']}%"
+                )
+
+            with p3:
+
+                st.metric(
+                    "🔴 VENDER",
+                    f"{probabilities['VENDER']}%"
+                )
+
+            st.caption(
+                "Estas probabilidades representan la "
+                "confianza heurística del modelo en cada "
+                "señal. No son probabilidades estadísticas "
+                "calibradas de movimiento del precio."
+            )
 
         # ----------------------------------------------------
         # ESTRATEGIA
         # ----------------------------------------------------
 
-        with c:
+        st.divider()
 
-            st.markdown(
-                "### 🎯 Estrategia táctica"
-            )
+        st.markdown(
+            "### 📌 Estrategia táctica"
+        )
 
-            st.write(strategy)
+        st.write(strategy)
 
-            st.markdown(
-                "### 📊 Estado"
-            )
 
-            if action == "COMPRAR":
+# ============================================================
+# METODOLOGÍA
+# ============================================================
 
-                st.success(
-                    "Prioridad táctica"
-                )
+st.divider()
 
-            elif action == "VENDER":
+st.markdown(
+    "### 🧠 ¿Cómo se calcula el Score?"
+)
 
-                st.error(
-                    "Reducir exposición"
-                )
+st.write(
+    """
+    El Score táctico combina la valoración base de la empresa,
+    el sentimiento detectado en las noticias, la recencia de
+    las noticias y un ajuste por riesgo.
+    """
+)
 
-            else:
+methodology = {
+    "Componente": [
+        "Valoración base",
+        "Sentimiento de noticias",
+        "Recencia de noticias",
+        "Componente neutral",
+        "Ajuste por riesgo"
+    ],
+    "Peso aproximado": [
+        "40%",
+        "35%",
+        "15%",
+        "10%",
+        "Ajuste"
+    ]
+}
 
-                st.warning(
-                    "Mantener vigilancia"
-                )
+st.dataframe(
+    methodology,
+    use_container_width=True,
+    hide_index=True
+)
+
+
+# ============================================================
+# INTERPRETACIÓN
+# ============================================================
+
+st.markdown(
+    "### 📖 Interpretación"
+)
+
+i1, i2, i3 = st.columns(3)
+
+with i1:
+
+    st.success(
+        """
+        **80–100**
+
+        🟢 COMPRAR
+
+        Señal táctica fuerte.
+        """
+    )
+
+with i2:
+
+    st.warning(
+        """
+        **60–79**
+
+        🟡 MANTENER
+
+        Señal intermedia.
+        """
+    )
+
+with i3:
+
+    st.error(
+        """
+        **0–59**
+
+        🔴 VENDER
+
+        Señal táctica débil.
+        """
+    )
+
 
 # ============================================================
 # PIE
 # ============================================================
+
 st.divider()
 
 st.caption(
-    "Las noticias se consultan al presionar "
-    "«Actualizar noticias». No se almacenan en una base de datos."
+    "Trading Tactical · V3 · Sin JavaScript · "
+    "Sin base de datos"
 )
 
 st.caption(
-    "Siguiente etapa: utilizar las noticias actuales "
-    "para calcular automáticamente el Score táctico 0–100."
+    "Las noticias se consultan nuevamente al pulsar "
+    "«Actualizar noticias». El modelo no conserva historial."
 )
